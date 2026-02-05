@@ -1,3 +1,6 @@
+[![GitHub license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/cobbpeng/fpga-hardware-design-and-review-guide/blob/main/LICENSE)
+
+
 # FPGA Hardware Design Guide
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
