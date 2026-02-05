@@ -1,326 +1,726 @@
-# 问题排查与解决
+# FPGA Design Troubleshooting Guide
 
-实际项目中遇到的问题及解决方案。
+## Timing Issues
 
-## 时序问题
+### **Timing Closure Failure**
 
-### 问题1：关键路径延迟过大
+#### **Id**
+timing-closure
 
-**现象**：
-- Vivado报告WNS（Worst Negative Slack）为负数
-- 设计无法实现目标频率（如100MHz）
+#### **Severity**
+critical
 
-**诊断步骤**：
-1. 查看时序报告，找到延迟最大的路径
-2. 分析该路径上的逻辑级数
-3. 检查是否有复杂的组合逻辑块
+#### **Summary**
+Design doesn't meet timing constraints, unreliable operation
 
-**解决方案**：
+#### **Symptoms**
+- Negative slack in timing report
+- Works at low temperature, fails when warm
+- Works on some units, fails on others
 
-**方案A：插入流水线（推荐）**
-```systemverilog
-// 优化前：组合逻辑太长
-assign result = (a * coef_a) + (b * coef_b) + (c * coef_c);
+#### **Why**
+Timing closure means all paths meet setup/hold requirements.
 
-// 优化后：分两级完成
+Common causes of failure:
+- Long combinational paths (too much logic between FFs)
+- High fanout signals (driving many loads)
+- Clock skew/uncertainty
+- Missing or incorrect constraints
+
+Negative slack = path too slow = unreliable operation.
+
+#### **Gotcha**
+
+```verilog
+// WRONG: Long combinational path
+always @(*) begin
+    // 20 levels of logic - will never meet 100MHz timing
+    result = ((a * b) + (c * d)) * ((e + f) / g) + h;
+end
+```
+
+#### **Solution**
+
+```verilog
+// CORRECT: Pipeline long operations
 always @(posedge clk) begin
-    sum_ab <= (a * coef_a) + (b * coef_b);  // 第1级
-    result <= sum_ab + (c * coef_c);         // 第2级
+    // Stage 1
+    mult1 <= a * b;
+    mult2 <= c * d;
+
+    // Stage 2
+    sum1 <= mult1 + mult2;
+    sum2 <= e + f;
+
+    // Stage 3
+    result <= sum1 + (sum2 * h);  // Simplified
+end
+
+// Reduce fanout with register duplication
+// Let synthesis tool handle with: set_max_fanout 32
+
+// Add proper timing constraints
+// create_clock -period 10.0 [get_ports clk]
+```
+
+---
+
+## Logic Errors
+
+### **Metastability from Missing CDC Synchronizer**
+
+#### **Id**
+cdc-metastability
+
+#### **Severity**
+critical
+
+#### **Summary**
+Signals crossing clock domains without synchronization cause random failures
+
+#### **Symptoms**
+- Random bit flips in data
+- FSM enters invalid state
+- Works on some boards, fails on others
+- Failures increase with temperature
+
+#### **Why**
+When a signal changes near a clock edge, the flip-flop may enter a metastable state - neither 0 nor 1.
+
+This takes time to resolve (settling time). If another flip-flop samples before resolution, you get random values.
+
+Single-bit: Use 2-FF synchronizer
+Multi-bit: Use async FIFO with Gray code pointers
+Pulse: Convert to toggle, synchronize, edge-detect
+
+CDC bugs are the #1 cause of "random" FPGA failures.
+
+#### **Gotcha**
+
+```verilog
+// WRONG: Direct connection across clock domains
+always @(posedge clk_b) begin
+    data_b <= data_a;  // data_a is in clk_a domain!
+    // Metastability! Random values!
 end
 ```
 
-**方案B：逻辑重定时**
-```tcl
-# 在XDC约束文件中添加
-set_property RETIMING true [get_cells -hierarchical *]
-```
+#### **Solution**
 
-**方案C：使用DSP Slice**
-```systemverilog
-// 让工具自动使用DSP
-(* use_dsp = "yes" *) 
-reg [17:0] mult_result;
-```
+```verilog
+// CORRECT: Use 2-FF synchronizer for single bit
+(* ASYNC_REG = "TRUE" *)
+reg [1:0] sync_chain;
 
----
-
-### 问题2：建立时间违例（Setup Violation）
-
-**原因**：
-- 信号从源寄存器到目的寄存器传播太慢
-- 时钟偏斜（Clock Skew）过大
-- 组合逻辑延迟过大
-
-**排查方法**：
-```tcl
-# 查看具体路径 report_timing -from [get_pins src_reg/C] -to [get_pins dst_reg/D] -setup
-```
-
-**解决策略**：
-1. **减少逻辑级数**：将复杂运算拆分到多个周期
-2. **优化布线**：手动布局关键模块
-3. **降低时钟频率**：如果允许的话
-4. **使用时钟偏斜优化**：`set_property CLOCK_DELAY_GROUP ...`
-
----
-
-### 问题3：保持时间违例（Hold Violation）
-
-**原因**：
-- 信号传播太快，在时钟沿之前就到达
-- 通常发生在同一时钟域内的短路径
-
-**解决策略**：
-1. **添加延迟单元**：
-   ```tcl
-   set_property DELAY_VALUE 4 [get_cells -hierarchical *delay_cell*]
-   ```
-   
-2. **使用LUT作为延迟线**：
-   ```systemverilog
-   (* dont_touch = "true" *)
-   wire delayed_signal;
-   assign delayed_signal = ~ (~signal);  // 两个LUT延迟
-   ```
-
----
-
-## 逻辑错误
-
-### 问题4：符号扩展错误
-
-**现象**：
-- 有符号数运算结果错误
-- 高位填充不正确导致负数变正数
-
-**案例分析**：RGB转YUV中的错误
-```systemverilog
-// 错误代码：
-wire signed [17:0] result;
-assign result = data * coef;  // data无符号，coef有符号
-// 结果：高bit被错误填充
-
-// 正确代码：
-wire signed [8:0] data_signed;
-assign data_signed = $signed({1'b0, data});  // 先转有符号
-wire signed [17:0] result;
-assign result = data_signed * coef;  // 再相乘
-```
-
----
-
-### 问题5：异步复位导致的亚稳态
-
-**现象**：
-- 系统偶尔出现随机错误
-- 复位释放后状态机进入非法状态
-
-**原因**：
-- 异步复位信号在时钟沿附近释放
-- 复位信号传播延迟不一致
-
-**解决方案**：
-```systemverilog
-// 推荐：同步复位
-always @(posedge clk) begin  // 注意：没有negedge rst_n
-    if (!rst_n) begin
-        state <= IDLE;
-    end else begin
-        state <= next_state;
-    end
+always @(posedge clk_b) begin
+    sync_chain <= {sync_chain[0], signal_a};
 end
+assign signal_b = sync_chain[1];
 
-// 如果必须用异步复位，使用复位同步器：
-reg rst_sync1, rst_sync2;
-always @(posedge clk or negedge rst_async_n) begin
-    if (!rst_async_n) begin
-        rst_sync1 <= 1'b0;
-        rst_sync2 <= 1'b0;
-    end else begin
-        rst_sync1 <= 1'b1;
-        rst_sync2 <= rst_sync1;  // 同步后的复位
-    end
-end
-
-wire rst_n_sync = rst_sync2;
-```
-
----
-
-### 问题6：跨时钟域数据丢失
-
-**现象**：
-- 多比特信号直接用2FF同步器
-- 数据偶尔出错
-
-**原因**：
-- 2FF只能同步单bit信号
-- 多bit信号每个bit延迟可能不同
-
-**正确做法**：
-
-**方法A：使用FIFO（推荐）**
-```systemverilog
-// 异步FIFO自动处理CDC
-async_fifo #(
-    .DATA_WIDTH(32),
-    .DEPTH(16)
-) u_fifo (
-    .wr_clk(clk_a),
-    .rd_clk(clk_b),
-    // ... 其他端口
+// For multi-bit data: use async FIFO
+async_fifo #(.DATA_WIDTH(8)) fifo (
+    .wr_clk(clk_a), .wr_data(data_a),
+    .rd_clk(clk_b), .rd_data(data_b)
 );
 ```
 
-**方法B：握手协议**
-```systemverilog
-// 发送方
-always @(posedge clk_a) begin
-    if (ready_to_send) begin
-        data_out <= data;
-        valid_out <= 1'b1;
-    end
-    if (ack_in)  // 收到应答
-        valid_out <= 1'b0;
-end
-
-// 接收方（经过2FF同步后）
-always @(posedge clk_b) begin
-    valid_sync <= {valid_sync[0], valid_out};
-    if (valid_sync[1]) begin  // 检测到有效
-        data_captured <= data_sync;  // 捕获数据
-        ack_out <= 1'b1;  // 发送应答
-    end
-end
-```
-
 ---
 
-## 资源问题
+### **Unintentional Latch Inference**
 
-### 问题7：LUT资源不足
+#### **Id**
+latch-inference
 
-**现象**：
-- 综合报错：LUT utilization > 100%
-- 或者无法实现（Place & Route失败）
+#### **Severity**
+critical
 
-**优化方法**：
+#### **Summary**
+Incomplete if/case creates latch instead of flip-flop
 
-**1. 简化组合逻辑**
-```systemverilog
-// 低效：复杂条件
-assign out = (condition1 & condition2) | (condition3 & ~condition4) | ... ;
+#### **Symptoms**
+- Synthesis warning: 'latch inferred'
+- Timing analysis fails
+- Unexpected behavior after synthesis
 
-// 高效：使用case语句
-case ({condition1, condition2, condition3, condition4})
-    4'b1100: out = ...;
-    // ...
-endcase
-```
+#### **Why**
+In combinational logic, if a signal isn't assigned in all branches, synthesis infers a latch to hold the previous value.
 
-**2. 使用BRAM代替分布式RAM**
-```systemverilog
-// 小数组自动用LUTRAM
-reg [7:0] small_array [0:15];  // 用16个LUT
+Latches are:
+- Hard to analyze timing for
+- Not available in all FPGA architectures
+- Often indicate a design error
 
-// 大数组强制用BRAM
-(* ram_style = "block" *)
-reg [7:0] large_array [0:1023];  // 用1个BRAM
-```
+Almost always, you wanted a flip-flop or a complete assignment.
 
-**3. 共享资源**
-```systemverilog
-// 优化前：两个独立的乘法器
-wire [15:0] result1 = a * b;
-wire [15:0] result2 = c * d;
+#### **Gotcha**
 
-// 优化后：时分复用（如果允许延迟）
-reg [15:0] mult_result;
-reg [1:0] state;
-always @(posedge clk) begin
-    case (state)
-        0: mult_result <= a * b;
-        1: mult_result <= c * d;
+```verilog
+// WRONG: Missing else creates latch
+always @(*) begin
+    if (enable)
+        data_out = data_in;
+    // What happens when enable=0? Latch!
+end
+
+// WRONG: Incomplete case creates latch
+always @(*) begin
+    case (sel)
+        2'b00: y = a;
+        2'b01: y = b;
+        // Missing 2'b10, 2'b11 cases - latch!
     endcase
 end
 ```
 
+#### **Solution**
+
+```verilog
+// CORRECT: Assign default at start
+always @(*) begin
+    data_out = 8'h00;  // Default value
+    if (enable)
+        data_out = data_in;
+end
+
+// CORRECT: Complete case with default
+always @(*) begin
+    case (sel)
+        2'b00: y = a;
+        2'b01: y = b;
+        default: y = 8'h00;  // Catch-all
+    endcase
+end
+
+// CORRECT: Use full_case/parallel_case pragmas carefully
+// (* full_case *) only if you guarantee coverage
+```
+
 ---
 
-### 问题8：BRAM资源不足
+### **Asynchronous Reset Release Glitch**
 
-**优化方法**：
+#### **Id**
+reset-glitch
 
-**1. 减小存储深度**
-```systemverilog
-// 原来：1024深度，实际只需512
-reg [7:0] mem [0:1023];  // 使用28个BRAM（假设36Kb块）
+#### **Severity**
+high
 
-// 优化：减小到512
-reg [7:0] mem [0:511];   // 使用14个BRAM
+#### **Summary**
+Releasing reset asynchronously causes metastability
+
+#### **Symptoms**
+- FSM starts in wrong state after reset
+- Different behavior on different resets
+- Works most of the time, occasionally fails
+
+#### **Why**
+Asserting reset asynchronously is fine - it immediately resets.
+But RELEASING reset at an arbitrary time can violate recovery/removal timing on flip-flops.
+
+Solution: Assert asynchronously, release synchronously.
+This gives the reset assertion benefit (immediate) while ensuring clean release aligned to clock.
+
+#### **Gotcha**
+
+```verilog
+// WRONG: Fully asynchronous reset
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+        state <= IDLE;
+    else
+        state <= next_state;
+end
+// Reset release can cause metastability!
 ```
 
-**2. 使用半双工访问**
-```systemverilog
-// 如果读和写不同时发生，可以共享地址线
-// 节省一半BRAM资源
-```
+#### **Solution**
 
-**3. 数据压缩**
-- 只存储有效数据位
-- 使用编码减少存储量
+```verilog
+// CORRECT: Reset synchronizer
+// Async assert, sync release
+
+module reset_sync (
+    input  wire clk,
+    input  wire rst_n_async,
+    output wire rst_n_sync
+);
+    reg [1:0] sync;
+
+    always @(posedge clk or negedge rst_n_async) begin
+        if (!rst_n_async)
+            sync <= 2'b00;  // Async assert
+        else
+            sync <= {sync[0], 1'b1};  // Sync release
+    end
+
+    assign rst_n_sync = sync[1];
+endmodule
+
+// Use synchronized reset in design
+reset_sync rst_sync (.clk(clk), .rst_n_async(rst_n), .rst_n_sync(rst_n_safe));
+```
 
 ---
 
-## 调试技巧
+### **Simulation-Synthesis Mismatch**
 
-### 使用ILA定位问题
+#### **Id**
+simulation-synthesis-mismatch
 
-**步骤1：标记调试信号**
-```systemverilog
-(* mark_debug = "true" *)
-wire [7:0] debug_data;
-(* mark_debug = "true" *)
-wire debug_valid;
+#### **Severity**
+high
+
+#### **Summary**
+Design works in simulation but fails on FPGA
+
+#### **Symptoms**
+- Testbench passes, hardware fails
+- Adding signals to debug changes behavior
+- Different results from simulation and implementation
+
+#### **Why**
+Common causes:
+1. Non-synthesizable constructs (initial blocks, delays)
+2. Incomplete sensitivity lists
+3. Blocking vs non-blocking assignment confusion
+4. X-propagation differences
+5. Timing assumptions in testbench
+
+Simulation is behavior model; synthesis creates actual hardware.
+
+#### **Gotcha**
+
+```verilog
+// WRONG: Initial blocks don't synthesize
+initial begin
+    count = 0;  // Only works in simulation!
+end
+
+// WRONG: Incomplete sensitivity list
+always @(a or b) begin
+    y = a & b & c;  // c not in sensitivity list!
+    // Simulation: y updates on a or b change
+    // Synthesis: combinational logic, updates on any change
+end
+
+// WRONG: Blocking in sequential, non-blocking in combinational
+always @(posedge clk) begin
+    a = b;  // Should be <=
+    c = a;  // Gets NEW value of a (race condition)
+end
 ```
 
-**步骤2：在Vivado中添加ILA**
+#### **Solution**
+
+```verilog
+// CORRECT: Use reset instead of initial
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n)
+        count <= 0;
+    else
+        count <= count + 1;
+end
+
+// CORRECT: Use @(*) for combinational
+always @(*) begin  // All signals in sensitivity list
+    y = a & b & c;
+end
+
+// CORRECT: Non-blocking for sequential
+always @(posedge clk) begin
+    a <= b;  // Non-blocking
+    c <= a;  // Gets OLD value of a
+end
+```
+
+---
+
+## Resource Optimization
+
+### **FPGA Resource Exhaustion**
+
+#### **Id**
+resource-exhaustion
+
+#### **Severity**
+high
+
+#### **Summary**
+Design uses more resources than available
+
+#### **Symptoms**
+- Synthesis fails with 'resource exceeded'
+- Timing degrades as utilization increases
+- Can't fit design even at lower clock speed
+
+#### **Why**
+FPGAs have limited:
+- LUTs (logic)
+- FFs (registers)
+- BRAM (block RAM)
+- DSP slices (multipliers)
+
+Over ~70-80% utilization, place-and-route struggles.
+Common causes: unintended resource usage, inefficient coding.
+
+#### **Solution**
+
+```verilog
+// Check resource usage in synthesis reports
+
+// Efficient resource usage:
+// 1. Use BRAM instead of distributed RAM for large memories
+(* ram_style = "block" *) reg [7:0] mem [0:1023];
+
+// 2. Share multipliers via time-division
+always @(posedge clk) begin
+    case (phase)
+        0: product <= a * b;  // Reuse same DSP
+        1: product <= c * d;
+    endcase
+end
+
+// 3. Use inference patterns tools recognize
+// Let synthesis optimize instead of manual optimization
+
+// 4. Reduce bit widths where possible
+reg [7:0] counter;  // Not reg [31:0] if you only count to 100
+```
+
+---
+
+## Debugging Techniques
+
+### **ILA (Integrated Logic Analyzer) Usage**
+
+#### **Description**
+Xilinx ILA is an embedded logic analyzer for debugging FPGA designs in hardware.
+
+#### **Basic Usage**
+
 ```tcl
-# 综合后打开 synthesized design
-# Tools -> Set up Debug
-# 选择要观察的信号
-# 设置触发条件（如 error_flag == 1）
-# 设置采样深度（建议4096或8192）
+# XDC constraints for ILA
+set_property MARK_DEBUG true [get_nets {signal_name}]
+
+# Or instantiate ILA in Verilog
+ila_0 your_instance_name (
+    .clk(clk),                  // input wire clk
+    .probe0(signal_to_probe)    // input wire [7:0] probe0
+);
 ```
 
-**步骤3：运行时捕获**
-```
-1. 生成bitstream并下载到FPGA
-2. 打开Hardware Manager
-3. 设置触发条件
-4. 等待触发或强制触发
-5. 分析波形
+#### **Best Practices**
+
+1. **Plan debug signals early**: Add debug ports during design phase
+2. **Use trigger conditions**: Set up complex trigger conditions to catch rare events
+3. **Limit probe width**: Each probe bit consumes BRAM for capture buffer
+4. **Use cross-triggering**: Trigger multiple ILA cores simultaneously
+5. **Add debug ILA during development, remove for production**
+
+#### **Common Debug Patterns**
+
+```verilog
+// Add debug output for state machines
+(* mark_debug = "true" *) reg [3:0] debug_state;
+assign debug_state = state;
+
+// Debug counter for tracking events
+(* mark_debug = "true" *) reg [15:0] event_counter;
+always @(posedge clk)
+    if (trigger_event)
+        event_counter <= event_counter + 1;
+
+// Debug flags for status monitoring
+(* mark_debug = "true" *) wire debug_fifo_full;
+(* mark_debug = "true" *) wire debug_fifo_empty;
+assign debug_fifo_full = fifo_full;
+assign debug_fifo_empty = fifo_empty;
 ```
 
 ---
 
-### 常见调试场景
+## Static Analysis Rules
 
-**场景1：输出偶尔错误**
-- 怀疑：时序问题
-- 方法：ILA捕获输出和中间结果
-- 检查：是否在错误时钟沿输出
+### **Case Statement Without Default**
 
-**场景2：状态机死锁**
-- 怀疑：状态转换条件错误
-- 方法：ILA监控状态寄存器
-- 检查：是否进入未定义状态
+#### **Id**
+missing-default-case
 
-**场景3：数据流断断续续**
-- 怀疑：握手信号问题
-- 方法：ILA捕获valid/ready信号
-- 检查：握手时序是否正确
+#### **Severity**
+warning
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `case\s*\([^)]+\)[^}]*endcase(?!.*default)`
+- `case\s*\([^)]+\)(?![\s\S]{0,500}default)`
+
+#### **Message**
+Case statement without default may infer latch.
+
+#### **Fix Action**
+Add 'default:' clause with explicit assignment
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
 
 ---
 
-*这些问题都是在实际项目中遇到并解决的。*
+### **Blocking Assignment in Sequential Logic**
+
+#### **Id**
+blocking-in-sequential
+
+#### **Severity**
+warning
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `always\s*@\s*\(\s*posedge[^)]+\)[^;]*\b\w+\s*=\s*(?!.*<=)`
+
+#### **Message**
+Use non-blocking (<=) for sequential logic to avoid race conditions.
+
+#### **Fix Action**
+Replace = with <= in always @(posedge clk) blocks
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
+
+---
+
+### **Direct Clock Domain Crossing**
+
+#### **Id**
+direct-cdc-connection
+
+#### **Severity**
+error
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `always\s*@\s*\(\s*posedge\s+clk_b[^}]*\b(\w+_a)\b(?!.*sync)`
+
+#### **Message**
+Signal appears to cross clock domains without synchronizer.
+
+#### **Fix Action**
+Add 2-FF synchronizer or async FIFO for CDC
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
+
+---
+
+### **Initial Block in Synthesizable Code**
+
+#### **Id**
+initial-block
+
+#### **Severity**
+warning
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `^\s*initial\s+begin(?![\s\S]*\.tb\.)`
+
+#### **Message**
+Initial blocks don't synthesize. Use reset instead.
+
+#### **Fix Action**
+Replace with synchronous reset: always @(posedge clk) if (!rst_n)
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
+
+---
+
+### **Incomplete Sensitivity List**
+
+#### **Id**
+incomplete-sensitivity
+
+#### **Severity**
+warning
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `always\s*@\s*\([^*][^)]*\)\s*begin[^}]*\b(\w+)\b(?![^}]*@.*\1)`
+
+#### **Message**
+Consider using @(*) for combinational logic to auto-include all signals.
+
+#### **Fix Action**
+Replace explicit sensitivity list with always @(*)
+
+#### **Applies To**
+- **/*.v
+
+---
+
+### **Synchronizer Without ASYNC_REG Attribute**
+
+#### **Id**
+missing-async-reg
+
+#### **Severity**
+info
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `reg\s+\[\d+:\d\]\s+\w*sync\w*(?!.*ASYNC_REG)`
+
+#### **Message**
+Synchronizer registers should have ASYNC_REG attribute for proper placement.
+
+#### **Fix Action**
+Add (* ASYNC_REG = "TRUE" *) before register declaration
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
+
+---
+
+### **Asynchronous Reset Without Synchronizer**
+
+#### **Id**
+async-reset-no-sync
+
+#### **Severity**
+warning
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `negedge\s+rst_n(?!.*sync)`
+
+#### **Message**
+Asynchronous reset should be synchronized for clean release.
+
+#### **Fix Action**
+Use reset synchronizer: async assert, sync release pattern
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
+
+---
+
+### **High Fanout Signal**
+
+#### **Id**
+high-fanout-signal
+
+#### **Severity**
+info
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `\.(\w+)\(enable\)[^;]*\.(\w+)\(enable\)[^;]*\.(\w+)\(enable\)`
+
+#### **Message**
+High fanout signal may cause timing issues.
+
+#### **Fix Action**
+Consider registering signal at each destination or using synthesis directives
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
+
+---
+
+### **Missing Clock Definition**
+
+#### **Id**
+missing-clock-constraint
+
+#### **Severity**
+warning
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `get_ports.*clk(?!.*create_clock)`
+
+#### **Message**
+Clock port should have create_clock constraint.
+
+#### **Fix Action**
+Add: create_clock -period <ns> [get_ports clk]
+
+#### **Applies To**
+- **/*.xdc
+- **/*.sdc
+
+---
+
+### **IO Without Delay Constraint**
+
+#### **Id**
+unconstrained-io
+
+#### **Severity**
+info
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `get_ports.*data(?!.*set_input_delay|set_output_delay)`
+
+#### **Message**
+Data ports should have input/output delay constraints.
+
+#### **Fix Action**
+Add set_input_delay/set_output_delay for all data ports
+
+#### **Applies To**
+- **/*.xdc
+- **/*.sdc
+
+---
+
+### **Non-Blocking in Combinational Logic**
+
+#### **Id**
+non-blocking-combinational
+
+#### **Severity**
+warning
+
+#### **Type**
+regex
+
+#### **Pattern**
+- `always\s*@\s*\(\s*\*\s*\)[^}]*<=`
+
+#### **Message**
+Use blocking (=) for combinational logic.
+
+#### **Fix Action**
+Replace <= with = in always @(*) blocks
+
+#### **Applies To**
+- **/*.v
+- **/*.sv
