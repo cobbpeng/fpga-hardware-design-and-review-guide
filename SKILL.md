@@ -1,5 +1,5 @@
 ---
-name:fpga-hardware-design-and-review-guide
+name: fpga-hardware-design-and-review-guide
 description: >
   Comprehensive FPGA hardware design guide based on real-world project experience.
   Covers pipeline architecture, timing optimization, SystemVerilog coding patterns,
@@ -246,3 +246,6 @@ endgroup
 ---
 
 *This guide is based on real-world project experience and is continuously updated.*
+
+
+Fix YAML syntax - add missing name field
