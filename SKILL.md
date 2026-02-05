@@ -1,5 +1,5 @@
 ---
-name: fpga-hardware-design-guide
+fpga-hardware-design-and-review-guide
 description: >
   Personal FPGA hardware design guide based on real project experience. 
   Covers pipeline design, timing optimization, SystemVerilog coding patterns, 
