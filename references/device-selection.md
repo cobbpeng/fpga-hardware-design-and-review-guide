@@ -1,345 +1,221 @@
-# 器件选型建议
+# Xilinx 7 Series FPGA Device Selection Guide
 
-基于实际项目经验的Xilinx 7系列FPGA选型指南。
+## Overview
 
-## 快速选型决策
+Xilinx 7 Series FPGAs are based on 28nm High-K Metal Gate (HKMG) process technology, offering three device families with different positioning to cover the full range from low-cost to ultra-high-performance applications.
 
-### 第一步：确定项目规模
+### Three Series Positioning
 
-**小型项目**（逻辑单元 < 50K）
-- 示例：简单控制、接口转换、低速信号处理
-- 推荐：Artix-7 系列
-- 典型型号：XC7A35T, XC7A50T
-- 成本：低（$30-100）
-
-**中型项目**（逻辑单元 50K-200K）
-- 示例：视频处理、工业控制、软件无线电
-- 推荐：Artix-7 高端或 Kintex-7 入门
-- 典型型号：XC7A200T, XC7K70T, XC7K160T
-- 成本：中（$100-500）
-
-**大型项目**（逻辑单元 > 200K）
-- 示例：高性能计算、数据中心加速、高端通信
-- 推荐：Kintex-7 高端或 Virtex-7
-- 典型型号：XC7K325T以上, XC7VX系列
-- 成本：高（$500-5000+）
+| Series | Positioning | Logic Cell Range | Application Scenarios |
+|--------|-------------|------------------|----------------------|
+| **Artix-7** | Lowest cost and power | 16K - 215K | Consumer electronics, industrial control, communications infrastructure |
+| **Kintex-7** | Best price/performance | 70K - 480K | Mid-range communications, video processing, medical imaging |
+| **Virtex-7** | Highest performance and capacity | 585K - 2000K | High-end networking, HPC, radar signal processing |
 
 ---
 
-## 各系列特点
+## Detailed Resource Comparison
 
-### Artix-7：低成本之选
+### Artix-7 Series (Cost-Sensitive)
 
-**优势**：
-- 价格最便宜（相比K/V系列）
-- 功耗最低
-- 小封装可选（10x10mm起）
-- 适合消费电子
+**Features:**
+- Optimized for cost and power, small form factor packages
+- Suitable for high-volume applications
+- Supports DDR3 interface up to 1066 Mb/s
 
-**资源范围**：
-- 逻辑单元：16K - 215K
-- DSP：45 - 740
-- BRAM：900Kb - 13Mb
-- 收发器：GTP (6.6Gb/s)
+**Device Specifications:**
 
-**适用场景**：
-- 工业自动化控制器
-- 医疗设备
-- 汽车电子
-- 消费电子
+| Device | Logic Cells | Slices | FF | BRAM (36Kb) | DSP | Max I/O |
+|--------|-------------|--------|-----|-------------|-----|---------|
+| XC7A15T | 16,640 | 2,600 | 20,800 | 25 | 45 | 250 |
+| XC7A35T | 33,280 | 5,200 | 41,600 | 50 | 90 | 300 |
+| XC7A50T | 52,160 | 8,150 | 65,200 | 75 | 120 | 300 |
+| XC7A75T | 75,520 | 11,800 | 94,400 | 105 | 180 | 300 |
+| XC7A100T | 101,440 | 15,850 | 126,800 | 135 | 240 | 300 |
+| XC7A200T | 215,360 | 33,650 | 269,200 | 365 | 740 | 500 |
 
-**典型选型**：
-```
-XC7A15T  → 简单状态机、接口转换
-XC7A35T  → 小型图像处理、通信协议
-XC7A100T → 中等复杂度算法
-XC7A200T → 较大规模视频处理
-```
+**Key Features:**
+- Up to 16 GTP transceivers (6.6 Gb/s)
+- Supports PCIe Gen2 x4
+- XADC analog interface
+- Speed grades: -1, -2, -3 (-1 slowest, -3 fastest)
 
 ---
 
-### Kintex-7：性价比之王
+### Kintex-7 Series (Price/Performance)
 
-**优势**：
-- 性能是前代产品的2倍
-- 收发器速率更高（12.5Gb/s）
-- DSP性能强（最高2,845 GMAC/s）
-- 价格适中
+**Features:**
+- 2x better price/performance than previous generation
+- Higher DSP performance and transceiver bandwidth
+- Supports DDR3 interface up to 1866 Mb/s
 
-**资源范围**：
-- 逻辑单元：65K - 478K
-- DSP：240 - 1,920
-- BRAM：4.8Mb - 34Mb
-- 收发器：GTX (12.5Gb/s)
+**Device Specifications:**
 
-**适用场景**：
-- 软件无线电（SDR）
-- 医疗影像（CT/MRI处理）
-- 机器视觉
-- 高端通信设备
+| Device | Logic Cells | Slices | FF | BRAM (36Kb) | DSP | GTX Transceivers |
+|--------|-------------|--------|-----|-------------|-----|------------------|
+| XC7K70T | 65,600 | 10,250 | 82,000 | 135 | 240 | 8 |
+| XC7K160T | 162,240 | 25,350 | 202,800 | 325 | 600 | 8 |
+| XC7K325T | 326,080 | 50,950 | 407,600 | 445 | 840 | 16 |
+| XC7K355T | 356,160 | 55,650 | 445,200 | 715 | 1440 | 24 |
+| XC7K410T | 406,720 | 63,550 | 508,400 | 795 | 1540 | 16 |
+| XC7K420T | 416,960 | 65,150 | 521,200 | 835 | 1680 | 32 |
+| XC7K480T | 477,760 | 74,650 | 597,200 | 955 | 1920 | 32 |
 
-**典型选型**：
-```
-XC7K70T   → 入门SDR、简单视频处理
-XC7K160T  → 中等规模信号处理
-XC7K325T  → 复杂算法、多通道处理
-XC7K410T  → 大规模并行计算
-```
+**Key Features:**
+- Up to 32 GTX transceivers (12.5 Gb/s)
+- Supports PCIe Gen2 x8
+- Stronger DSP performance (up to 2,845 GMAC/s)
+- Industrial temperature support
 
 ---
 
-### Virtex-7：极致性能
+### Virtex-7 Series (High-Performance)
 
-**优势**：
-- 最大容量（2M逻辑单元）
-- 最高性能收发器（28Gb/s）
-- 堆叠硅互连（SSI）技术
-- 适合最苛刻应用
+**Features:**
+- Highest system performance and capacity
+- Stacked Silicon Interconnect (SSI) technology for ultra-large devices
+- Up to 28.05 Gb/s transceiver rate
 
-**资源范围**：
-- 逻辑单元：582K - 1,955K
-- DSP：1,260 - 3,600
-- BRAM：28Mb - 68Mb
-- 收发器：GTH (13.1Gb/s), GTZ (28Gb/s)
+**Main Device Specifications:**
 
-**适用场景**：
-- 100G/400G网络
-- 高性能计算（HPC）
-- 雷达信号处理
-- 数据中心加速卡
+| Device | Logic Cells | Slices | FF | BRAM (36Kb) | DSP | GTX/GTH |
+|--------|-------------|--------|-----|-------------|-----|---------|
+| XC7V585T | 582,720 | 91,050 | 728,400 | 795 | 1260 | 36 GTX |
+| XC7V2000T | 1,954,560 | 305,400 | 2,443,200 | 1,292 | 2160 | 36 GTX |
+| XC7VX330T | 326,400 | 51,000 | 408,000 | 750 | 1120 | 28 GTX |
+| XC7VX415T | 412,160 | 64,400 | 515,200 | 880 | 2160 | 48 GTH |
+| XC7VX485T | 485,760 | 75,900 | 607,200 | 1,030 | 2800 | 56 GTH |
+| XC7VX690T | 693,120 | 108,300 | 866,400 | 1,470 | 3600 | 80 GTH |
+| XC7VX980T | 979,200 | 153,000 | 1,224,000 | 1,500 | 3600 | 72 GTH |
+| XC7VX1140T | 1,139,200 | 178,000 | 1,424,000 | 1,880 | 3360 | 96 GTH |
+| XC7VH580T | 580,480 | 90,700 | 725,600 | 940 | 1680 | 48 GTH + 8 GTZ |
+| XC7VH870T | 876,160 | 136,900 | 1,095,200 | 1,410 | 2520 | 72 GTH + 16 GTZ |
 
-**典型选型**：
-```
-XC7V585T     → 高端网络设备
-XC7VX690T    → 超大规模计算
-XC7V2000T    → 最大容量需求（SSI）
-XC7VH870T    → 极高性能（GTZ收发器）
-```
-
----
-
-## 资源估算方法
-
-### 逻辑资源估算
-
-**基本模块占用**：
-| 模块类型 | 大概占用（LUTs） | 备注 |
-|---------|----------------|------|
-| 简单状态机 | 50-200 | 4-8个状态 |
-| 8位加法器 | 10-20 | 带进位 |
-| 32位加法器 | 30-50 | 带进位 |
-| 8×8乘法器 | 80-120 | 无符号 |
-| 32×32乘法器 | 400-600 | 无符号（建议用DSP）|
-| MicroBlaze软核 | 1500-3000 | 基本配置 |
-
-**估算公式**：
-```
-总LUTs = Σ(各模块LUTs) × 1.3（布线余量）
-```
-
-**建议保留**：
-- 至少保留30%余量用于布线
-- 实际使用 ≤ 70% 可用LUTs
+**Key Features:**
+- GTH transceivers support 13.1 Gb/s, GTZ supports 28.05 Gb/s
+- Supports PCIe Gen3 x8
+- Highest performance: 5,335 GMAC/s DSP performance
+- Stacked Silicon Interconnect (SSI) technology for ultra-large capacity
 
 ---
 
-### 存储资源估算
+## Selection Decision Tree
 
-**BRAM使用场景**：
+### Step 1: Determine Application Type
 
-**场景1：视频行缓冲**
 ```
-需求：1920×1080分辨率，每像素24bit
-计算：1920 × 3字节 = 5,760字节/行
-BRAM：使用1个36Kb BRAM（可配置为1K×36）
-```
-
-**场景2：FIFO缓冲**
-```
-需求：深度512，位宽64bit
-计算：512 × 64bit = 32,768bit = 32Kb
-BRAM：使用1个36Kb BRAM
+Application Requirements
+├── Cost-sensitive + Low Power → Artix-7
+├── Balanced Performance/Cost → Kintex-7
+└── Ultra-high Performance/Capacity → Virtex-7
 ```
 
-**场景3：查找表**
-```
-需求：1024条目，每条目32bit
-计算：1024 × 32bit = 32,768bit = 32Kb
-BRAM：使用1个36Kb BRAM
-```
+### Step 2: Estimate Resource Requirements
 
-**BRAM容量速查**：
-- 1个36Kb BRAM = 可配置为：
-  - 1K × 36bit
-  - 2K × 18bit
-  - 4K × 9bit
-  - 8K × 4bit
-  - 16K × 2bit
-  - 32K × 1bit
+**Common Resource Estimation Methods:**
+
+1. **Logic Resources (Slices/LUTs)**
+   - Simple control logic: 100-500 LUTs per functional module
+   - Complex algorithms: 1000-5000 LUTs per functional module
+   - Processor soft core: MicroBlaze approximately 1500-3000 LUTs
+
+2. **Memory Resources (BRAM)**
+   - Video line buffer: (pixels per line × bit width) ÷ 36Kb
+   - FIFO buffer: (depth × bit width) ÷ 36Kb
+   - Data cache: Calculate based on data volume
+
+3. **DSP Resources**
+   - FIR filter: 1 DSP slice per tap
+   - FFT: Calculate based on number of points and parallelism
+   - Image processing: Estimate based on algorithm complexity
+
+4. **Transceiver Requirements**
+   - Gigabit Ethernet: 1 Gb/s × quantity
+   - PCIe: Gen1(2.5G), Gen2(5G), Gen3(8G)
+   - Fibre Channel: 1/2/4/8/10/16 Gb/s
+
+### Step 3: Consider Future Expansion
+
+**Recommended Headroom:**
+- Logic resources: Actual usage ≤ 70% of available resources
+- BRAM: Actual usage ≤ 80% of available resources
+- DSP: Reserve 20-30% based on algorithm characteristics
+- I/O: Consider debugging and testing requirements
 
 ---
 
-### DSP资源估算
+## Typical Application Selection Recommendations
 
-**常用算法占用**：
+### Application Scenario Reference Table
 
-**FIR滤波器**：
-```
-占用 = 抽头数 × 并行度
-
-示例：128抽头，4并行
-占用 = 128 × 4 = 512个DSP
-适用器件：XC7K325T（840 DSP）✓
-```
-
-**FFT**：
-```
-占用与点数和级数相关
-
-示例：1024点FFT，Radix-2
-约需 20-30个DSP（用于旋转因子乘法）
-```
-
-**矩阵乘法**：
-```
-占用 = 矩阵A行数 × 矩阵B列数
-
-示例：4×4矩阵相乘
-占用 = 4 × 4 = 16个DSP（并行计算）
-```
+| Application Scenario | Recommended Series | Typical Device | Key Considerations |
+|---------------------|-------------------|----------------|-------------------|
+| **Industrial Control** | Artix-7 | XC7A35T/50T | Low cost, low power, many I/Os |
+| **Machine Vision** | Kintex-7 | XC7K325T | Strong DSP, good DDR3 support |
+| **Software Radio** | Kintex-7/Virtex-7 | XC7K410T/XC7VX690T | Many transceivers, strong DSP |
+| **100G Networking** | Virtex-7 | XC7VX690T/VX980T | 28G transceivers, large capacity |
+| **Datacenter Acceleration** | Virtex-7 | XC7VX1140T | Maximum capacity, PCIe Gen3 |
+| **Medical Devices** | Artix-7/Kintex-7 | XC7A100T/XC7K160T | Low power, high reliability |
+| **Test & Measurement** | Kintex-7/Virtex-7 | XC7K325T/XC7VX485T | High-speed acquisition, large bandwidth |
 
 ---
 
-### 收发器选择
+## Package and Speed Grades
 
-**按应用选择速率**：
+### Package Types
 
-| 应用 | 所需速率 | 收发器类型 | 推荐系列 |
-|------|---------|-----------|---------|
-| 千兆以太网 | 1.25G | GTP | Artix-7 |
-| PCIe Gen2 x4 | 5G | GTP/GTX | Kintex-7 |
-| 10G以太网 | 10.3125G | GTX | Kintex-7 |
-| PCIe Gen3 | 8G | GTX/GTH | Kintex/Virtex-7 |
-| 100G以太网 | 25G | GTZ | Virtex-7 |
+| Package Code | Type | Pitch | Application Scenarios |
+|-------------|------|-------|----------------------|
+| CP | Wire-bond CSP | 0.5mm | Extremely small form factor |
+| CS | Wire-bond CSP | 0.8mm | Small consumer electronics |
+| FT | Wire-bond Fine-pitch | 1.0mm | Medium density |
+| SB | Lidless Flip-chip | 0.8mm | High performance + low cost |
+| FB | Lidless Flip-chip | 1.0mm | High performance |
+| FF/FG | Flip-chip | 1.0mm | Highest performance |
+| FL/FH | Flip-chip | 1.0mm | Virtex-7 specific |
 
----
+### Speed Grade Descriptions
 
-## 实际选型案例
+**Artix-7/Kintex-7:**
+- `-1`: Slowest, lowest power
+- `-2`: Medium performance (most commonly used)
+- `-3`: Highest performance
+- `-1L/-2L`: Low power versions
 
-### 案例1：机器视觉系统
-
-**需求**：
-- 处理1080p60视频流
-- 实现边缘检测算法（Sobel）
-- 输出到HDMI
-- 成本敏感
-
-**分析**：
-- 逻辑：视频时序生成 + 滤波 ≈ 30K LUTs
-- 存储：3行缓冲 ≈ 3 × 36Kb BRAM
-- DSP：Sobel滤波 ≈ 20个DSP
-- 接口：HDMI 1.4（可用GTP或直接IO）
-
-**推荐**：XC7A100T
-- 101K LUTs（充足）
-- 135个BRAM（充足）
-- 240个DSP（充足）
-- 成本约$100-150
+**Virtex-7:**
+- `-1`: Base performance
+- `-2`: Standard performance
+- `-3`: Highest performance
+- `-2G`: SSI devices, support 12.5G/13.1G/28.05G transceivers
 
 ---
 
-### 案例2：软件无线电
+## Quick Selection Reference Table
 
-**需求**：
-- 采样率：100MSPS
-- 实现数字下变频（DDC）
-- 256抽头FIR滤波
-- 千兆以太网回传
+### Find by Resource Requirements
 
-**分析**：
-- 逻辑：DDC + 滤波控制 ≈ 50K LUTs
-- DSP：256抽头 ≈ 256个DSP
-- 存储：数据缓冲 ≈ 20个BRAM
-- 接口：千兆网 + ADC接口
+**Small Designs (<50K Logic Cells):**
+- Artix-7: XC7A15T ~ XC7A50T
+- Kintex-7: XC7K70T
 
-**推荐**：XC7K160T
-- 162K LUTs（充足）
-- 325个DSP（满足256+余量）
-- 600个BRAM（充足）
-- 支持GTX（可选10G升级）
-- 成本约$300-400
+**Medium Designs (50K-200K Logic Cells):**
+- Artix-7: XC7A75T ~ XC7A200T
+- Kintex-7: XC7K160T ~ XC7K325T
 
----
+**Large Designs (200K-500K Logic Cells):**
+- Kintex-7: XC7K355T ~ XC7K480T
+- Virtex-7: XC7VX330T ~ XC7VX485T
 
-### 案例3：数据中心加速
-
-**需求**：
-- 100G网络处理
-- 深度学习推理加速
-- PCIe Gen3 x16
-- 大容量DDR4缓存
-
-**分析**：
-- 逻辑：复杂包处理 ≈ 500K+ LUTs
-- 收发器：4×25G = 100G
-- 存储：DDR4控制器 + 大缓存
-- 接口：PCIe Gen3 x16
-
-**推荐**：XC7VX690T
-- 693K LUTs（满足大规模逻辑）
-- 80个GTH收发器（支持100G）
-- PCIe Gen3硬IP
-- 大容量BRAM（52Mb）
-- 成本约$3000-4000
+**Extra Large Designs (>500K Logic Cells):**
+- Virtex-7: XC7V585T and above
+- Or consider SSI devices (XC7V2000T, XC7VX1140T, etc.)
 
 ---
 
-## 成本优化技巧
+## Reference Materials
 
-### 1. 充分利用资源
+- DS180: 7 Series FPGAs Overview
+- 7-series-product-selection-guide.pdf
+- UG470-UG483: 7 Series User Guides
 
-**避免浪费**：
-- 小存储用LUTRAM，大存储用BRAM
-- 小乘法用LUT，大乘法用DSP
-- 根据实际需求选择，不过度设计
-
-### 2. 考虑封装成本
-
-**封装价格排序**（从低到高）：
-1. 线焊封装（Wire-bond）：FT, FG, CS
-2. 倒装芯片（Flip-chip）：FB, FF
-3. 陶瓷封装（Ceramic）：HC（军用级）
-
-**建议**：
-- 民用产品：选择线焊封装
-- 高性能需求：选择倒装芯片
-- 极端环境：才考虑陶瓷封装
-
-### 3. 批量折扣
-
-**价格参考**（仅供参考）：
-- 1-10片：零售价
-- 100-500片：约8折
-- 1000+片：约6-7折
-- 10K+片：议价空间大
-
----
-
-## 选型Checklist
-
-提交设计前确认：
-
-- [ ] 逻辑资源使用率 ≤ 70%
-- [ ] BRAM使用率 ≤ 80%
-- [ ] DSP使用率 ≤ 85%
-- [ ] 收发器数量满足需求
-- [ ] IO数量满足需求
-- [ ] 功耗在预算范围内
-- [ ] 成本在预算范围内
-- [ ] 封装尺寸适合PCB
-- [ ] 温度等级符合环境（商业/工业/军用）
-- [ ] 速度等级满足时序（-1/-2/-3）
-
----
-
-*选型建议基于实际项目经验，具体以Xilinx官方数据手册为准。*
+**Note:** All data is based on Xilinx official datasheets, this guide is for reference only.
