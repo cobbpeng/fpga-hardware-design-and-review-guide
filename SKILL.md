@@ -1,14 +1,14 @@
 ---
 fpga-hardware-design-and-review-guide
 description: >
-  Personal FPGA hardware design guide based on real project experience. 
-  Covers pipeline design, timing optimization, SystemVerilog coding patterns, 
-  and practical debugging techniques. Use this skill when:
+  Comprehensive FPGA hardware design guide based on real-world project experience.
+  Covers pipeline architecture, timing optimization, SystemVerilog coding patterns,
+  CDC handling, and practical debugging techniques. Use this skill when:
   (1) designing FPGA modules with timing constraints,
   (2) implementing video processing or data path designs,
   (3) optimizing for resource utilization and timing closure,
   (4) reviewing RTL code for hardware implementation,
-  (5) debugging synthesis and implementation issues.
+  (5) debugging synthesis or implementation issues.
 license: MIT
 compatibility: Works with Claude Code, Cursor, and AI coding assistants.
 metadata:
@@ -20,169 +20,169 @@ allowed-tools: Read Write Edit Bash
 
 # FPGA Hardware Design Guide
 
-基于实际项目经验的FPGA硬件设计指南。
+A practical FPGA hardware design guide based on real-world project experience.
 
-## 核心设计理念
+## Core Design Philosophy
 
-### 1. 流水线架构优先
+### 1. Pipeline Architecture First
 
-在处理高速数据流（如视频、网络包）时，采用多级流水线设计：
-- **单级处理**：组合逻辑延迟过大，容易出现时序违例
-- **多级流水线**：每级插入寄存器，分散延迟，提高时钟频率
-- **典型应用**：RGB转YUV、图像滤波、协议解析
+When processing high-speed data streams (video, network packets), adopt multi-stage pipeline design:
+- **Single-stage processing**: Combinational logic delay too large, prone to timing violations
+- **Multi-stage pipeline**: Insert registers at each stage, distribute delay, increase clock frequency
+- **Typical applications**: RGB-to-YUV conversion, image filtering, protocol parsing
 
-**实际案例**：RGB转YUV转换器采用5级流水线
-- Stage 0: 输入寄存（同步输入信号）
-- Stage 1: 乘法运算（系数*像素值）
-- Stage 2: 部分累加（R*coef_r + G*coef_g）
-- Stage 3: 最终累加（+ B*coef_b）
-- Stage 4: 移位和饱和处理（结果截断到8bit）
+**Real Case**: RGB-to-YUV converter with 5-stage pipeline
+- Stage 0: Input register (synchronize input signals)
+- Stage 1: Multiply operation (coefficient * pixel value)
+- Stage 2: Partial accumulation (R*coef_r + G*coef_g)
+- Stage 3: Final accumulation (+ B*coef_b)
+- Stage 4: Shift and saturation (truncate result to 8-bit)
 
-### 2. 位宽管理的艺术
+### 2. The Art of Bit-Width Management
 
-**计算位宽的原则**：
+**Bit-width calculation principles**:
 ```
-乘法位宽 = 输入位宽 + 系数位宽 + 1（符号位）
-累加位宽 = 乘法位宽 + log2(累加个数) + 1（保护位）
+Multiplication bit-width = input bit-width + coefficient bit-width + 1 (sign bit)
+Accumulation bit-width = multiplication bit-width + log2(number of additions) + 1 (guard bit)
 ```
 
-**经验法则**：
-- 8bit无符号 * 9bit有符号系数 = 18bit有符号结果
-- 3个18bit数相加 = 20bit（留2bit保护位防止溢出）
-- 右移8位后 = 8bit最终结果
+**Rules of thumb**:
+- 8-bit unsigned * 9-bit signed coefficient = 18-bit signed result
+- 3 numbers of 18-bit addition = 20-bit (leave 2 guard bits to prevent overflow)
+- After right-shifting 8 bits = 8-bit final result
 
-### 3. 同步设计的铁律
+### 3. Iron Rules of Synchronous Design
 
-**必须遵守的规则**：
-1. **所有触发器使用同一时钟域**（除非明确需要CDC）
-2. **同步复位优于异步复位**（避免亚稳态传播）
-3. **输入信号必须打两拍**（跨时钟域或外部输入）
-4. **组合逻辑输出必须寄存**（避免毛刺传播）
+**Rules that must be followed**:
+1. **All flip-flops use the same clock domain** (unless CDC is explicitly needed)
+2. **Synchronous reset preferred over asynchronous reset** (avoid metastability propagation)
+3. **Input signals must be registered for two cycles** (cross-clock domain or external inputs)
+4. **Combinational logic outputs must be registered** (avoid glitch propagation)
 
-**实际教训**：
-- 异步复位在时钟不稳定时会导致不可预测行为
-- 未寄存的组合输出在布局布线后可能产生毛刺
-- 跨时钟域信号直接用会导致亚稳态
+**Lessons learned**:
+- Asynchronous reset leads to unpredictable behavior when clock is unstable
+- Unregistered combinational outputs may produce glitches after place-and-route
+- Direct use of cross-clock domain signals causes metastability
 
-## 时序收敛实战技巧
+## Timing Closure Practical Techniques
 
-### 延迟分析与优化
+### Delay Analysis and Optimization
 
-**识别关键路径**：
-1. 查看综合报告中的 `Worst Negative Slack (WNS)`
-2. 分析 `Total Negative Slack (TNS)` 分布
-3. 定位延迟最大的逻辑级数
+**Identifying critical paths**:
+1. Check `Worst Negative Slack (WNS)` in synthesis report
+2. Analyze `Total Negative Slack (TNS)` distribution
+3. Locate logic levels with maximum delay
 
-**优化策略**：
-1. **插入流水线寄存器**（最有效）
-   - 在组合逻辑中间插入FF
-   - 每级延迟 < 目标时钟周期的70%
+**Optimization strategies**:
+1. **Insert pipeline registers** (most effective)
+   - Insert FF in the middle of combinational logic
+   - Each stage delay < 70% of target clock period
    
-2. **逻辑重定时**（Retiming）
-   - 使用 `set_property RETIMING true` 
-   - 让工具自动移动寄存器位置
+2. **Logic retiming**
+   - Use `set_property RETIMING true`
+   - Let tool automatically move register positions
    
-3. **关键信号优化**
-   - 对关键路径使用 `set_property HIGH_PRIORITY true`
-   - 手动布局关键模块 `set_property LOC ...`
+3. **Critical signal optimization**
+   - Use `set_property HIGH_PRIORITY true` for critical paths
+   - Manual placement for critical modules `set_property LOC ...`
 
-**实际数据**：
-- 原始设计：关键路径15ns，目标10ns（不满足）
-- 插入2级流水线：关键路径7ns（满足+余量30%）
-- 延迟代价：2个时钟周期（可接受）
+**Real data**:
+- Original design: critical path 15ns, target 10ns (not met)
+- After inserting 2 pipeline stages: critical path 7ns (met + 30% margin)
+- Latency cost: 2 clock cycles (acceptable)
 
-## 资源优化策略
+## Resource Optimization Strategies
 
-### LUT优化
+### LUT Optimization
 
-**减少LUT使用的方法**：
-1. **使用case语句代替if-else链**（综合为LUT更高效）
-2. **避免复杂的三目运算符嵌套**
-3. **利用DSP Slice代替LUT实现乘法**
+**Methods to reduce LUT usage**:
+1. **Use case statements instead of if-else chains** (more efficient LUT synthesis)
+2. **Avoid complex nested ternary operators**
+3. **Use DSP Slices instead of LUTs for multiplication**
 
-**实例对比**：
+**Comparison example**:
 ```systemverilog
-// 低效：多层嵌套if
+// Inefficient: nested if-else
 if (condition1) out = a;
 else if (condition2) out = b;
 else if (condition3) out = c;
-// 使用 ~20 LUTs
+// Uses ~20 LUTs
 
-// 高效：case语句
+// Efficient: case statement
 case ({condition1, condition2, condition3})
     3'b100: out = a;
     3'b010: out = b;
     3'b001: out = c;
     default: out = d;
 endcase
-// 使用 ~8 LUTs
+// Uses ~8 LUTs
 ```
 
-### BRAM使用技巧
+### BRAM Usage Techniques
 
-**何时使用BRAM**：
-- 存储深度 > 16（通常）
-- 需要双端口访问
-- 大容量查找表（>1KB）
+**When to use BRAM**:
+- Storage depth > 16 (typically)
+- Dual-port access required
+- Large lookup tables (>1KB)
 
-**何时使用分布式RAM**：
-- 小容量存储（<16深度）
-- 需要异步读取
-- 节省BRAM资源
+**When to use distributed RAM**:
+- Small storage (<16 depth)
+- Asynchronous read needed
+- Save BRAM resources
 
-**代码示例**：
+**Code example**:
 ```systemverilog
-// 自动推断为BRAM（36Kb块）
+// Automatically inferred as BRAM (36Kb block)
 reg [7:0] mem [0:1023];  // 8Kbits
 always @(posedge clk) begin
     if (we) mem[addr] <= din;
-    dout <= mem[addr];  // 同步读
+    dout <= mem[addr];  // Synchronous read
 end
 
-// 小容量自动使用LUTRAM
+// Small capacity automatically uses LUTRAM
 reg [7:0] small_mem [0:15];  // 128bits
 ```
 
-### DSP Slice优化
+### DSP Slice Optimization
 
-**充分利用DSP48E1**：
-- 25×18乘法器（支持有符号/无符号）
-- 48位累加器
-- 预加器（用于对称FIR滤波）
+**Fully utilize DSP48E1**:
+- 25×18 multiplier (supports signed/unsigned)
+- 48-bit accumulator
+- Pre-adder (for symmetric FIR filters)
 
-**避免DSP浪费**：
-- 不要用小位宽乘法（<8bit），LUT更高效
-- 级联DSP时利用专用走线（ACIN/ACOUT）
-- 使用CE和SCLR控制节省功耗
+**Avoid DSP waste**:
+- Don't use DSP for small multiplications (<8bit), LUTs are more efficient
+- Use dedicated routing (ACIN/ACOUT) when cascading DSPs
+- Use CE and SCLR controls to save power
 
-## 调试与验证方法
+## Debugging and Verification Methods
 
-### 仿真策略
+### Simulation Strategy
 
-**三级验证体系**：
-1. **行为级仿真**（前综合）
-   - 验证算法正确性
-   - 使用理想延迟模型
+**Three-level verification system**:
+1. **Behavioral simulation** (pre-synthesis)
+   - Verify algorithm correctness
+   - Use ideal delay models
    
-2. **综合后仿真**（Post-Synthesis）
-   - 验证综合结果功能正确
-   - 检查时序粗略估计
+2. **Post-synthesis simulation**
+   - Verify synthesis result functionality
+   - Check rough timing estimates
    
-3. **实现后仿真**（Post-Implementation）
-   - 包含实际布线延迟
-   - 最接近真实硬件
+3. **Post-implementation simulation**
+   - Include actual routing delays
+   - Closest to real hardware
 
-**测试平台编写要点**：
+**Testbench writing essentials**:
 ```systemverilog
-// 1. 自检查测试
+// 1. Self-checking test
 initial begin
-    // 施加激励
+    // Apply stimulus
     apply_stimulus();
     
-    // 等待处理
+    // Wait for processing
     repeat(10) @(posedge clk);
     
-    // 检查结果
+    // Check results
     if (dout !== expected) begin
         $error("Test failed! Expected %h, got %h", expected, dout);
         $finish;
@@ -190,7 +190,7 @@ initial begin
     $display("Test passed!");
 end
 
-// 2. 覆盖率检查
+// 2. Coverage check
 covergroup cg @(posedge clk);
     coverpoint state {
         bins idle = {IDLE};
@@ -200,49 +200,49 @@ covergroup cg @(posedge clk);
 endgroup
 ```
 
-### 板上调试技巧
+### On-board Debugging Techniques
 
-**使用ILA（Integrated Logic Analyzer）**：
-1. 标记关键信号为 `mark_debug`
-2. 设置触发条件（如错误标志、特定状态）
-3. 捕获数据到Vivado分析
+**Using ILA (Integrated Logic Analyzer)**:
+1. Mark critical signals as `mark_debug`
+2. Set trigger conditions (e.g., error flags, specific states)
+3. Capture data to Vivado for analysis
 
-**使用VIO（Virtual Input/Output）**：
-- 实时修改参数（如滤波器系数）
-- 监控内部状态寄存器
-- 无需重新编译即可调试
+**Using VIO (Virtual Input/Output)**:
+- Modify parameters in real-time (e.g., filter coefficients)
+- Monitor internal status registers
+- Debug without recompilation
 
-**实际调试案例**：
-- 问题：YUV输出偶尔出现错误值
-- 方法：ILA捕获乘法中间结果
-- 发现：符号扩展错误导致高位溢出
-- 解决：修正有符号数扩展逻辑
+**Real debugging case**:
+- Issue: YUV output occasionally shows wrong values
+- Method: ILA captured multiplication intermediate results
+- Finding: Sign extension error caused high-bit overflow
+- Solution: Fixed signed number extension logic
 
-## 参考文档
+## Reference Documentation
 
-**详细设计模式**：查看 `references/design-patterns.md`
-- CDC同步器设计
-- FIFO实现
-- AXI-Stream接口
+**Detailed design patterns**: See `references/design-patterns.md`
+- CDC synchronizer design
+- FIFO implementation
+- AXI-Stream interface
 
-**常见问题排查**：查看 `references/troubleshooting.md`
-- 时序违例诊断流程
-- 亚稳态处理
-- 资源冲突解决
+**Common issues troubleshooting**: See `references/troubleshooting.md`
+- Timing violation diagnosis process
+- Metastability handling
+- Resource conflict resolution
 
-**器件选型指南**：查看 `references/device-selection.md`
-- 根据资源需求选型
-- 封装和速度等级选择
-- 成本优化建议
+**Device selection guide**: See `references/device-selection.md`
+- Selection based on resource requirements
+- Package and speed grade selection
+- Cost optimization suggestions
 
-## 黄金法则
+## Golden Rules
 
-1. **先功能后优化** — 先让设计正确工作，再优化时序和资源
-2. **早约束晚放松** — 早期严格时序约束，后期根据情况放宽
-3. **寄存一切边界** — 模块输入输出必须寄存，避免时序耦合
-4. **文档即代码** — 清晰的注释和文档比复杂的设计更重要
-5. **测试驱动开发** — 先写测试平台，再实现功能
+1. **Function first, optimization second** — Make the design work correctly first, then optimize timing and resources
+2. **Constrain early, relax late** — Strict timing constraints early, relax based on situation later
+3. **Register all boundaries** — Module inputs and outputs must be registered to avoid timing coupling
+4. **Documentation is code** — Clear comments and documentation are more important than complex designs
+5. **Test-driven development** — Write testbench first, then implement functionality
 
 ---
 
-*本指南基于实际项目经验编写，持续更新中。*
+*This guide is based on real-world project experience and is continuously updated.*
