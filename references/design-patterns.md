@@ -1,273 +1,659 @@
-# 设计模式库
+# FPGA Design Patterns
 
-基于实际项目经验的设计模式集合。
+## Design Patterns
 
-## 1. 多级流水线模式
+### **Two-Flip-Flop Synchronizer (CDC)**
 
-### 适用场景
-- 高速数据处理（视频、网络、信号处理）
-- 组合逻辑延迟超过时钟周期
-- 需要提高工作频率
+#### **Name**
+Clock Domain Crossing Synchronizer
 
-### 模式结构
-```systemverilog
-module pipeline_example #(
-    parameter DATA_WIDTH = 8,
-    parameter STAGES = 5
+#### **Description**
+Two-flip-flop synchronizer for single-bit CDC (Clock Domain Crossing)
+
+#### **Critical**
+
+#### **Pattern**
+
+```verilog
+// Two-Flip-Flop Synchronizer for single-bit signals
+// Reduces metastability MTBF to acceptable levels
+
+module sync_2ff #(
+    parameter STAGES = 2  // Minimum 2, use 3 for high-speed
 )(
-    input  wire                  clk,
-    input  wire                  rst_n,
-    input  wire [DATA_WIDTH-1:0] data_in,
-    input  wire                  data_valid_in,
-    output wire [DATA_WIDTH-1:0] data_out,
-    output wire                  data_valid_out
+    input  wire clk_dst,    // Destination clock
+    input  wire rst_n,      // Active-low reset
+    input  wire async_in,   // Asynchronous input (source domain)
+    output wire sync_out    // Synchronized output (destination domain)
 );
 
-    // 流水线寄存器数组
-    reg [DATA_WIDTH-1:0] pipe_reg [0:STAGES-1];
-    reg                  valid_reg [0:STAGES-1];
-    
-    // Stage 0: 输入采样
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            pipe_reg[0] <= {DATA_WIDTH{1'b0}};
-            valid_reg[0] <= 1'b0;
-        end else begin
-            pipe_reg[0] <= data_in;
-            valid_reg[0] <= data_valid_in;
-        end
-    end
-    
-    // Stage 1-N: 中间处理（示例：简单传递，实际可插入运算）
-    genvar i;
-    generate
-        for (i = 1; i < STAGES; i = i + 1) begin : gen_pipeline
-            always @(posedge clk or negedge rst_n) begin
-                if (!rst_n) begin
-                    pipe_reg[i] <= {DATA_WIDTH{1'b0}};
-                    valid_reg[i] <= 1'b0;
-                end else begin
-                    pipe_reg[i] <= pipe_reg[i-1];
-                    valid_reg[i] <= valid_reg[i-1];
-                end
-            end
-        end
-    endgenerate
-    
-    // 输出
-    assign data_out = pipe_reg[STAGES-1];
-    assign data_valid_out = valid_reg[STAGES-1];
-    
-endmodule
-```
-
-### 使用要点
-- 每级延迟控制在目标时钟的60-70%
-- 保持数据有效信号同步传递
-- 复位时所有级清零
-
----
-
-## 2. 带符号算术运算模式
-
-### 问题背景
-无符号数与有符号系数相乘时的符号处理容易出错。
-
-### 解决方案
-```systemverilog
-module signed_arithmetic #(
-    parameter DATA_WIDTH = 8,
-    parameter COEF_WIDTH = 9  // 系数位宽（包含符号位）
-)(
-    input  wire                       clk,
-    input  wire                       rst_n,
-    input  wire [DATA_WIDTH-1:0]      data_in,      // 无符号输入
-    input  wire signed [COEF_WIDTH-1:0] coef,       // 有符号系数
-    output wire signed [DATA_WIDTH+COEF_WIDTH:0] result  // 扩展位宽结果
-);
-
-    // 关键：无符号转有符号
-    wire signed [DATA_WIDTH:0] data_signed;
-    assign data_signed = $signed({1'b0, data_in});  // 高位补0转有符号
-    
-    // 乘法：结果位宽 = DATA_WIDTH + 1 + COEF_WIDTH
-    wire signed [DATA_WIDTH+COEF_WIDTH:0] mult_result;
-    assign mult_result = data_signed * coef;
-    
-    // 寄存输出
-    reg signed [DATA_WIDTH+COEF_WIDTH:0] result_reg;
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            result_reg <= 'd0;
-        else
-            result_reg <= mult_result;
-    end
-    
-    assign result = result_reg;
-    
-endmodule
-```
-
-### 关键技巧
-1. **符号扩展**：无符号数转有符号时高位补0
-2. **位宽计算**：乘积位宽 = 被乘数位宽 + 乘数位宽
-3. **饱和处理**：防止结果溢出
-
----
-
-## 3. 双触发器同步器（CDC）
-
-### 适用场景
-- 单比特信号跨时钟域传输
-- 亚稳态概率需要降到最低
-
-### 实现代码
-```systemverilog
-module cdc_sync_2ff #(
-    parameter STAGES = 2  // 默认2级，高速可用3级
-)(
-    input  wire clk_dst,    // 目的时钟
-    input  wire rst_n,
-    input  wire async_in,   // 异步输入
-    output wire sync_out    // 同步输出
-);
-
-    // Xilinx约束：将触发器放置在一起
-    (* ASYNC_REG = "TRUE" *)
+    // Synchronizer chain
+    (* ASYNC_REG = "TRUE" *)  // Xilinx: place FFs close together
     reg [STAGES-1:0] sync_chain;
-    
+
     always @(posedge clk_dst or negedge rst_n) begin
-        if (!rst_n) begin
+        if (!rst_n)
             sync_chain <= {STAGES{1'b0}};
-        end else begin
+        else
             sync_chain <= {sync_chain[STAGES-2:0], async_in};
-        end
     end
-    
+
     assign sync_out = sync_chain[STAGES-1];
-    
+
+endmodule
+
+// Usage: Synchronize a pulse from fast to slow domain
+module pulse_sync (
+    input  wire clk_src,
+    input  wire clk_dst,
+    input  wire rst_n,
+    input  wire pulse_in,   // Single-cycle pulse in source domain
+    output wire pulse_out   // Synchronized pulse in destination domain
+);
+
+    // Convert pulse to level (toggle)
+    reg src_toggle;
+    always @(posedge clk_src or negedge rst_n) begin
+        if (!rst_n)
+            src_toggle <= 1'b0;
+        else if (pulse_in)
+            src_toggle <= ~src_toggle;
+    end
+
+    // Synchronize toggle to destination
+    wire dst_toggle;
+    sync_2ff sync_toggle (
+        .clk_dst(clk_dst),
+        .rst_n(rst_n),
+        .async_in(src_toggle),
+        .sync_out(dst_toggle)
+    );
+
+    // Edge detect in destination
+    reg dst_toggle_d;
+    always @(posedge clk_dst or negedge rst_n) begin
+        if (!rst_n)
+            dst_toggle_d <= 1'b0;
+        else
+            dst_toggle_d <= dst_toggle;
+    end
+
+    assign pulse_out = dst_toggle ^ dst_toggle_d;
+
 endmodule
 ```
 
-### 注意事项
-- 仅适用于单比特信号
-- 多比特信号必须使用FIFO或握手协议
-- ASYNC_REG约束确保工具将触发器放在一起
+#### **Why**
+CDC without proper synchronization causes random failures (metastability)
 
 ---
 
-## 4. 简单同步FIFO
+### **Asynchronous FIFO**
 
-### 适用场景
-- 跨时钟域数据传输
-- 数据缓冲（速率匹配）
+#### **Name**
+Asynchronous FIFO
 
-### 实现代码
-```systemverilog
-module simple_fifo #(
+#### **Description**
+Multi-bit data transfer between clock domains
+
+#### **Critical**
+
+#### **Pattern**
+
+```verilog
+// Asynchronous FIFO for multi-bit CDC
+// Uses Gray code pointers to prevent metastability corruption
+
+module async_fifo #(
     parameter DATA_WIDTH = 8,
-    parameter DEPTH = 16,
-    parameter ADDR_WIDTH = $clog2(DEPTH)
+    parameter ADDR_WIDTH = 4  // Depth = 2^ADDR_WIDTH
 )(
-    input  wire                  clk,
-    input  wire                  rst_n,
-    
-    // 写接口
-    input  wire [DATA_WIDTH-1:0] wr_data,
+    // Write port (source clock domain)
+    input  wire                  wr_clk,
+    input  wire                  wr_rst_n,
     input  wire                  wr_en,
+    input  wire [DATA_WIDTH-1:0] wr_data,
     output wire                  full,
-    
-    // 读接口
-    output wire [DATA_WIDTH-1:0] rd_data,
+
+    // Read port (destination clock domain)
+    input  wire                  rd_clk,
+    input  wire                  rd_rst_n,
     input  wire                  rd_en,
+    output wire [DATA_WIDTH-1:0] rd_data,
     output wire                  empty
 );
 
-    // 存储器
+    localparam DEPTH = 1 << ADDR_WIDTH;
+
+    // Memory
     reg [DATA_WIDTH-1:0] mem [0:DEPTH-1];
-    
-    // 读写指针
-    reg [ADDR_WIDTH:0] wr_ptr;  // 额外1bit用于判断满/空
-    reg [ADDR_WIDTH:0] rd_ptr;
-    
-    // 写操作
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            wr_ptr <= 'd0;
-        else if (wr_en && !full)
-            wr_ptr <= wr_ptr + 1'b1;
+
+    // Pointers (binary and Gray code)
+    reg [ADDR_WIDTH:0] wr_ptr_bin, wr_ptr_gray;
+    reg [ADDR_WIDTH:0] rd_ptr_bin, rd_ptr_gray;
+
+    // Synchronized pointers
+    wire [ADDR_WIDTH:0] wr_ptr_gray_sync;
+    wire [ADDR_WIDTH:0] rd_ptr_gray_sync;
+
+    // Binary to Gray conversion
+    function [ADDR_WIDTH:0] bin2gray(input [ADDR_WIDTH:0] bin);
+        bin2gray = bin ^ (bin >> 1);
+    endfunction
+
+    // Gray to Binary conversion
+    function [ADDR_WIDTH:0] gray2bin(input [ADDR_WIDTH:0] gray);
+        integer i;
+        begin
+            gray2bin[ADDR_WIDTH] = gray[ADDR_WIDTH];
+            for (i = ADDR_WIDTH-1; i >= 0; i = i-1)
+                gray2bin[i] = gray2bin[i+1] ^ gray[i];
+        end
+    endfunction
+
+    // Write logic
+    always @(posedge wr_clk or negedge wr_rst_n) begin
+        if (!wr_rst_n) begin
+            wr_ptr_bin <= 0;
+            wr_ptr_gray <= 0;
+        end else if (wr_en && !full) begin
+            mem[wr_ptr_bin[ADDR_WIDTH-1:0]] <= wr_data;
+            wr_ptr_bin <= wr_ptr_bin + 1;
+            wr_ptr_gray <= bin2gray(wr_ptr_bin + 1);
+        end
     end
-    
-    always @(posedge clk) begin
-        if (wr_en && !full)
-            mem[wr_ptr[ADDR_WIDTH-1:0]] <= wr_data;
+
+    // Read logic
+    always @(posedge rd_clk or negedge rd_rst_n) begin
+        if (!rd_rst_n) begin
+            rd_ptr_bin <= 0;
+            rd_ptr_gray <= 0;
+        end else if (rd_en && !empty) begin
+            rd_ptr_bin <= rd_ptr_bin + 1;
+            rd_ptr_gray <= bin2gray(rd_ptr_bin + 1);
+        end
     end
-    
-    // 读操作
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            rd_ptr <= 'd0;
-        else if (rd_en && !empty)
-            rd_ptr <= rd_ptr + 1'b1;
-    end
-    
-    assign rd_data = mem[rd_ptr[ADDR_WIDTH-1:0]];
-    
-    // 状态判断
-    assign full  = (wr_ptr[ADDR_WIDTH] != rd_ptr[ADDR_WIDTH]) && 
-                   (wr_ptr[ADDR_WIDTH-1:0] == rd_ptr[ADDR_WIDTH-1:0]);
-    assign empty = (wr_ptr == rd_ptr);
-    
+
+    assign rd_data = mem[rd_ptr_bin[ADDR_WIDTH-1:0]];
+
+    // Synchronize write pointer to read domain
+    sync_2ff #(.STAGES(2)) sync_wr [ADDR_WIDTH:0] (
+        .clk_dst(rd_clk),
+        .rst_n(rd_rst_n),
+        .async_in(wr_ptr_gray),
+        .sync_out(wr_ptr_gray_sync)
+    );
+
+    // Synchronize read pointer to write domain
+    sync_2ff #(.STAGES(2)) sync_rd [ADDR_WIDTH:0] (
+        .clk_dst(wr_clk),
+        .rst_n(wr_rst_n),
+        .async_in(rd_ptr_gray),
+        .sync_out(rd_ptr_gray_sync)
+    );
+
+    // Full: write pointer will catch up to read pointer
+    // (MSB different, rest same in Gray code)
+    assign full = (wr_ptr_gray == {~rd_ptr_gray_sync[ADDR_WIDTH:ADDR_WIDTH-1],
+                                    rd_ptr_gray_sync[ADDR_WIDTH-2:0]});
+
+    // Empty: pointers are equal
+    assign empty = (rd_ptr_gray == wr_ptr_gray_sync);
+
 endmodule
 ```
 
+#### **Why**
+Multi-bit CDC requires FIFO with Gray code pointers for safe transfer
+
 ---
 
-## 5. AXI-Stream接口模板
+### **Finite State Machine (FSM) Design**
 
-### 基本接口定义
-```systemverilog
-module axis_interface #(
-    parameter DATA_WIDTH = 32,
-    parameter USER_WIDTH = 1,
-    parameter DEST_WIDTH = 1
+#### **Name**
+Finite State Machine Design
+
+#### **Description**
+Safe and synthesizable FSM patterns
+
+#### **Pattern**
+
+```verilog
+// One-Hot FSM with Safe State Encoding
+// Preferred for FPGA (uses flip-flops efficiently)
+
+module fsm_onehot #(
+    parameter IDLE     = 4'b0001,
+    parameter START    = 4'b0010,
+    parameter PROCESS  = 4'b0100,
+    parameter DONE     = 4'b1000
 )(
-    input  wire                   clk,
-    input  wire                   rst_n,
-    
-    // AXI-Stream Slave（输入）
-    input  wire [DATA_WIDTH-1:0]  s_axis_tdata,
-    input  wire                   s_axis_tvalid,
-    output wire                   s_axis_tready,
-    input  wire                   s_axis_tlast,  // 可选
-    input  wire [USER_WIDTH-1:0]  s_axis_tuser,  // 可选
-    
-    // AXI-Stream Master（输出）
-    output wire [DATA_WIDTH-1:0]  m_axis_tdata,
-    output wire                   m_axis_tvalid,
-    input  wire                   m_axis_tready,
-    output wire                   m_axis_tlast,
-    output wire [USER_WIDTH-1:0]  m_axis_tuser
+    input  wire clk,
+    input  wire rst_n,
+    input  wire start,
+    input  wire data_valid,
+    input  wire complete,
+    output reg  busy,
+    output reg  result_valid
 );
 
-    // 简单的透传示例
-    assign m_axis_tdata  = s_axis_tdata;
-    assign m_axis_tvalid = s_axis_tvalid;
-    assign s_axis_tready = m_axis_tready;
-    assign m_axis_tlast  = s_axis_tlast;
-    assign m_axis_tuser  = s_axis_tuser;
-    
-    // 实际应用中在此插入处理逻辑
-    
+    (* fsm_encoding = "one_hot" *)  // Xilinx synthesis directive
+    reg [3:0] state, next_state;
+
+    // State register (sequential)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            state <= IDLE;
+        else
+            state <= next_state;
+    end
+
+    // Next state logic (combinational)
+    always @(*) begin
+        // Default: stay in current state
+        next_state = state;
+
+        case (1'b1)  // One-hot case statement
+            state[0]: begin  // IDLE
+                if (start)
+                    next_state = START;
+            end
+
+            state[1]: begin  // START
+                if (data_valid)
+                    next_state = PROCESS;
+            end
+
+            state[2]: begin  // PROCESS
+                if (complete)
+                    next_state = DONE;
+            end
+
+            state[3]: begin  // DONE
+                next_state = IDLE;
+            end
+
+            default: begin  // Safety: recover from invalid state
+                next_state = IDLE;
+            end
+        endcase
+    end
+
+    // Output logic (registered for better timing)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            busy <= 1'b0;
+            result_valid <= 1'b0;
+        end else begin
+            busy <= (next_state != IDLE);
+            result_valid <= (state == DONE);
+        end
+    end
+
+endmodule
+
+// Binary FSM (for resource-constrained designs)
+module fsm_binary (
+    input  wire clk,
+    input  wire rst_n,
+    input  wire start,
+    output reg [1:0] state
+);
+
+    localparam [1:0]
+        IDLE    = 2'b00,
+        ACTIVE  = 2'b01,
+        WAIT    = 2'b10,
+        DONE    = 2'b11;
+
+    reg [1:0] next_state;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            state <= IDLE;
+        else
+            state <= next_state;
+    end
+
+    always @(*) begin
+        next_state = state;
+        case (state)
+            IDLE:    if (start) next_state = ACTIVE;
+            ACTIVE:  next_state = WAIT;
+            WAIT:    next_state = DONE;
+            DONE:    next_state = IDLE;
+            default: next_state = IDLE;  // Safety catch
+        endcase
+    end
+
 endmodule
 ```
 
-### 握手机制要点
-1. **TVALID由发送方控制**，数据有效时拉高
-2. **TREADY由接收方控制**，可以接收时拉高
-3. **数据传输发生在两者都高时的时钟上升沿**
-4. **TVALID一旦拉高，必须保持直到握手完成**
+#### **Why**
+Proper FSM design prevents latch inference and ensures safe synthesis
 
 ---
 
-*这些模式都经过实际项目验证。*
+### **Pipeline Design Pattern**
+
+#### **Name**
+Pipeline Design Pattern
+
+#### **Description**
+Multi-stage pipeline for high throughput
+
+#### **Pattern**
+
+```verilog
+// Pipeline with Valid/Ready Handshaking
+// Maintains throughput while allowing backpressure
+
+module pipeline_stage #(
+    parameter DATA_WIDTH = 32
+)(
+    input  wire                  clk,
+    input  wire                  rst_n,
+
+    // Input interface
+    input  wire                  in_valid,
+    output wire                  in_ready,
+    input  wire [DATA_WIDTH-1:0] in_data,
+
+    // Output interface
+    output reg                   out_valid,
+    input  wire                  out_ready,
+    output reg  [DATA_WIDTH-1:0] out_data
+);
+
+    // Bubble insertion: accept new data when output is ready
+    // or when we have no valid data
+    assign in_ready = out_ready || !out_valid;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            out_valid <= 1'b0;
+            out_data <= {DATA_WIDTH{1'b0}};
+        end else begin
+            if (in_ready) begin
+                out_valid <= in_valid;
+                if (in_valid) begin
+                    // Insert your processing logic here
+                    out_data <= in_data;  // Pass-through example
+                end
+            end
+        end
+    end
+
+endmodule
+
+// Multi-stage pipeline instantiation
+module data_pipeline #(
+    parameter DATA_WIDTH = 32,
+    parameter NUM_STAGES = 4
+)(
+    input  wire                  clk,
+    input  wire                  rst_n,
+    input  wire                  in_valid,
+    output wire                  in_ready,
+    input  wire [DATA_WIDTH-1:0] in_data,
+    output wire                  out_valid,
+    input  wire                  out_ready,
+    output wire [DATA_WIDTH-1:0] out_data
+);
+
+    wire [NUM_STAGES:0] stage_valid;
+    wire [NUM_STAGES:0] stage_ready;
+    wire [DATA_WIDTH-1:0] stage_data [0:NUM_STAGES];
+
+    assign stage_valid[0] = in_valid;
+    assign in_ready = stage_ready[0];
+    assign stage_data[0] = in_data;
+
+    genvar i;
+    generate
+        for (i = 0; i < NUM_STAGES; i = i + 1) begin : gen_stages
+            pipeline_stage #(
+                .DATA_WIDTH(DATA_WIDTH)
+            ) stage (
+                .clk(clk),
+                .rst_n(rst_n),
+                .in_valid(stage_valid[i]),
+                .in_ready(stage_ready[i]),
+                .in_data(stage_data[i]),
+                .out_valid(stage_valid[i+1]),
+                .out_ready(stage_ready[i+1]),
+                .out_data(stage_data[i+1])
+            );
+        end
+    endgenerate
+
+    assign out_valid = stage_valid[NUM_STAGES];
+    assign stage_ready[NUM_STAGES] = out_ready;
+    assign out_data = stage_data[NUM_STAGES];
+
+endmodule
+```
+
+#### **Why**
+Pipelining increases throughput and helps meet timing constraints
+
+---
+
+### **Memory Interface Patterns**
+
+#### **Name**
+Memory Interface Patterns
+
+#### **Description**
+BRAM and external memory interfaces
+
+#### **Pattern**
+
+```verilog
+// Synchronous Block RAM (BRAM) - True Dual-Port
+// Xilinx/Intel will infer BRAM from this pattern
+
+module true_dual_port_ram #(
+    parameter DATA_WIDTH = 32,
+    parameter ADDR_WIDTH = 10  // 1024 words
+)(
+    // Port A
+    input  wire                  clk_a,
+    input  wire                  en_a,
+    input  wire                  we_a,
+    input  wire [ADDR_WIDTH-1:0] addr_a,
+    input  wire [DATA_WIDTH-1:0] din_a,
+    output reg  [DATA_WIDTH-1:0] dout_a,
+
+    // Port B
+    input  wire                  clk_b,
+    input  wire                  en_b,
+    input  wire                  we_b,
+    input  wire [ADDR_WIDTH-1:0] addr_b,
+    input  wire [DATA_WIDTH-1:0] din_b,
+    output reg  [DATA_WIDTH-1:0] dout_b
+);
+
+    localparam DEPTH = 1 << ADDR_WIDTH;
+
+    // RAM storage
+    (* ram_style = "block" *)  // Force BRAM inference
+    reg [DATA_WIDTH-1:0] ram [0:DEPTH-1];
+
+    // Port A
+    always @(posedge clk_a) begin
+        if (en_a) begin
+            if (we_a)
+                ram[addr_a] <= din_a;
+            dout_a <= ram[addr_a];  // Read-first mode
+        end
+    end
+
+    // Port B
+    always @(posedge clk_b) begin
+        if (en_b) begin
+            if (we_b)
+                ram[addr_b] <= din_b;
+            dout_b <= ram[addr_b];
+        end
+    end
+
+endmodule
+
+// AXI-Stream Interface (for data streaming)
+module axis_register_slice #(
+    parameter DATA_WIDTH = 32
+)(
+    input  wire                  aclk,
+    input  wire                  aresetn,
+
+    // Slave interface (input)
+    input  wire                  s_axis_tvalid,
+    output wire                  s_axis_tready,
+    input  wire [DATA_WIDTH-1:0] s_axis_tdata,
+    input  wire                  s_axis_tlast,
+
+    // Master interface (output)
+    output reg                   m_axis_tvalid,
+    input  wire                  m_axis_tready,
+    output reg  [DATA_WIDTH-1:0] m_axis_tdata,
+    output reg                   m_axis_tlast
+);
+
+    assign s_axis_tready = m_axis_tready || !m_axis_tvalid;
+
+    always @(posedge aclk or negedge aresetn) begin
+        if (!aresetn) begin
+            m_axis_tvalid <= 1'b0;
+            m_axis_tdata <= {DATA_WIDTH{1'b0}};
+            m_axis_tlast <= 1'b0;
+        end else if (s_axis_tready) begin
+            m_axis_tvalid <= s_axis_tvalid;
+            m_axis_tdata <= s_axis_tdata;
+            m_axis_tlast <= s_axis_tlast;
+        end
+    end
+
+endmodule
+```
+
+#### **Why**
+Proper memory patterns ensure efficient BRAM utilization
+
+---
+
+### **Timing Constraints**
+
+#### **Name**
+Timing Constraints
+
+#### **Description**
+SDC/XDC timing constraint patterns
+
+#### **Pattern**
+
+```tcl
+# Xilinx XDC Timing Constraints
+
+# Primary clock definition
+create_clock -period 10.000 -name sys_clk [get_ports clk_100mhz]
+
+# Generated clocks (from PLL/MMCM)
+create_generated_clock -name clk_200mhz \
+    -source [get_pins pll_inst/CLKIN1] \
+    -multiply_by 2 \
+    [get_pins pll_inst/CLKOUT0]
+
+# Input delay constraints
+# Data arrives 2ns after clock edge, with 0.5ns uncertainty
+set_input_delay -clock sys_clk -max 2.5 [get_ports data_in[*]]
+set_input_delay -clock sys_clk -min 2.0 [get_ports data_in[*]]
+
+# Output delay constraints
+set_output_delay -clock sys_clk -max 3.0 [get_ports data_out[*]]
+set_output_delay -clock sys_clk -min 0.5 [get_ports data_out[*]]
+
+# Clock domain crossing - set false path for synchronizers
+# (Timing is handled by synchronizer, not place-and-route)
+set_false_path -from [get_clocks clk_a] -to [get_cells -hier -filter {ASYNC_REG==TRUE}]
+
+# Or explicitly between clock domains
+set_clock_groups -asynchronous \
+    -group [get_clocks clk_a] \
+    -group [get_clocks clk_b]
+
+# Max delay for CDC paths (optional, for monitoring)
+set_max_delay -datapath_only -from [get_clocks clk_a] \
+    -to [get_clocks clk_b] 5.0
+
+# Multicycle path (for pipelined logic)
+# Allow 2 clock cycles for this path
+set_multicycle_path 2 -setup -from [get_pins slow_reg/Q] \
+    -to [get_pins result_reg/D]
+set_multicycle_path 1 -hold -from [get_pins slow_reg/Q] \
+    -to [get_pins result_reg/D]
+
+# False paths for static configuration
+set_false_path -from [get_ports config_*]
+
+# Pin locations (IO constraints)
+set_property PACKAGE_PIN Y9 [get_ports clk_100mhz]
+set_property IOSTANDARD LVCMOS33 [get_ports clk_100mhz]
+```
+
+#### **Why**
+Correct timing constraints are essential for reliable synthesis
+
+---
+
+## Anti-Patterns
+
+### **Combinational Loop**
+
+#### **Name**
+Combinational Logic Loop
+
+#### **Problem**
+Feedback without register causes oscillation/undefined behavior
+
+#### **Solution**
+Break loops with registers; check synthesis warnings
+
+---
+
+### **Latch Inference**
+
+#### **Name**
+Unintentional Latch Inference
+
+#### **Problem**
+Incomplete case/if statements create latches
+
+#### **Solution**
+Assign default values at start of always block
+
+---
+
+### **Asynchronous Reset Release**
+
+#### **Name**
+Asynchronous Reset Release
+
+#### **Problem**
+Releasing reset asynchronously can cause metastability
+
+#### **Solution**
+Use synchronous de-assertion: async assert, sync release
+
+---
+
+### **Multiple Driver**
+
+#### **Name**
+Multiple Drivers on Signal
+
+#### **Problem**
+Signal driven from multiple always blocks
+
+#### **Solution**
+Single driver per signal; use case/if for muxing
