@@ -1,144 +1,144 @@
-# fpga-hardware-design-and-review-guide
-This skills just a  Agent skills for FPGA design and RTL code review 
+# FPGA Hardware Design Guide
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-基于真实项目经验的FPGA硬件设计指南，涵盖流水线设计、时序优化、SystemVerilog编码和调试技巧。
+A comprehensive FPGA hardware design guide based on real-world project experience, covering pipeline design, timing optimization, SystemVerilog coding patterns, and practical debugging techniques.
 
-## 核心理念
+## Overview
 
-本指南不同于传统的FPGA教程，它基于作者在实际项目中的经验教训，提供：
-- 经过验证的设计模式
-- 常见问题的实际解决方案
-- 从错误中总结的调试技巧
-- 实用的器件选型建议
+This guide differs from traditional FPGA tutorials. It's built from hands-on project experience, providing:
+- Proven design patterns tested in real projects
+- Practical solutions to common problems
+- Debugging techniques learned from mistakes
+- Actionable device selection advice
 
-## 主要内容
+## Key Features
 
-### 🎯 SKILL.md - 核心指南
-- 流水线架构设计原则
-- 位宽管理的艺术
-- 时序收敛实战技巧
-- 资源优化策略
-- 调试与验证方法
+✨ **Based on Real Experience** - All content comes from actual projects, not theory  
+✨ **Independent & Original** - Self-contained system, no dependency on other skills  
+✨ **Practice-Oriented** - Concrete code examples and solutions  
+✨ **Continuously Updated** - Growing with new project experiences  
+
+## Main Content
+
+### 🎯 SKILL.md - Core Guide
+- Pipeline architecture design principles
+- The art of bit-width management
+- Practical timing closure techniques
+- Resource optimization strategies
+- Debugging and verification methods
 
 ### 📚 Reference Documentation
 
 #### `design-patterns.md`
-实用的设计模式模板：
-- 多级流水线模式
-- 带符号算术运算
-- 跨时钟域同步器（CDC）
-- 简单同步FIFO
-- AXI-Stream接口
+Practical design pattern templates:
+- Multi-stage pipeline pattern
+- Signed arithmetic operations
+- Cross-clock domain synchronizer (CDC)
+- Simple synchronous FIFO
+- AXI-Stream interface
 
 #### `troubleshooting.md`
-问题排查手册：
-- 时序违例诊断与解决
-- 逻辑错误案例分析
-- 资源优化方法
-- ILA调试技巧
+Problem diagnosis handbook:
+- Timing violation diagnosis and solutions
+- Logic error case studies
+- Resource optimization methods
+- ILA debugging techniques
 
 #### `device-selection.md`
-器件选型指南：
-- Artix-7 / Kintex-7 / Virtex-7 对比
-- 资源估算方法
-- 实际选型案例
-- 成本优化技巧
+Device selection guide:
+- Artix-7 / Kintex-7 / Virtex-7 comparison
+- Resource estimation methods
+- Real selection cases
+- Cost optimization tips
 
-## 特色
+## When to Use
 
-✨ **基于实际经验** - 所有内容来自真实项目，非纸上谈兵  
-✨ **原创独立** - 不依赖其他skill，自成体系  
-✨ **实战导向** - 提供具体代码示例和解决方案  
-✨ **持续更新** - 随着新项目经验不断补充  
+Use this skill when you need to:
+1. Design FPGA modules with timing constraints
+2. Implement video processing or data path designs
+3. Optimize resource utilization and achieve timing closure
+4. Review RTL code for hardware implementation quality
+5. Debug synthesis or implementation issues
 
-## 适用场景
-
-使用本skill当你需要：
-1. 设计带有时序约束的FPGA模块
-2. 实现视频处理或数据通路设计
-3. 优化资源利用率和时序收敛
-4. 审查RTL代码的硬件可实现性
-5. 调试综合或实现阶段的问题
-
-## 安装
+## Installation
 
 ```bash
-npx skills add https://github.com/YOUR_USERNAME/fpga-hardware-design-guide --skill fpga-hardware-design-guide
+npx skills add https://github.com/cobbpeng/fpga-hardware-design-and-review-guide --skill fpga-hardware-design-guide
 ```
 
-## 使用示例
+## Usage Examples
 
-### 场景1：询问流水线设计
-> "我要设计一个高速FIR滤波器，需要5级流水线，应该怎么组织代码？"
+### Example 1: Pipeline Design
+> "I need to design a high-speed FIR filter with 5 pipeline stages. How should I organize the code?"
 
-**Skill会回答：**
-- 提供完整的流水线代码模板
-- 解释每级的功能划分
-- 给出时序优化建议
+**The skill will provide:**
+- Complete pipeline code template
+- Explanation of each stage's function
+- Timing optimization suggestions
 
-### 场景2：排查时序问题
-> "综合报告显示关键路径延迟15ns，目标10ns，怎么优化？"
+### Example 2: Timing Issues
+> "Synthesis report shows critical path delay of 15ns, target is 10ns. How to optimize?"
 
-**Skill会回答：**
-- 分析可能的原因
-- 提供3种优化方案（插入流水线、逻辑重定时、手动布局）
-- 给出具体的Tcl约束命令
+**The skill will provide:**
+- Analysis of possible causes
+- 3 optimization solutions (pipeline insertion, retiming, manual placement)
+- Specific Tcl constraint commands
 
-### 场景3：器件选型
-> "做一个4通道SDR，每通道50MSPS，推荐哪个FPGA？"
+### Example 3: Device Selection
+> "Building a 4-channel SDR at 50MSPS per channel, which FPGA should I choose?"
 
-**Skill会回答：**
-- 计算所需资源（逻辑、DSP、BRAM）
-- 推荐具体型号（如XC7K160T）
-- 解释选型理由和余量考虑
+**The skill will provide:**
+- Resource calculation (logic, DSP, BRAM)
+- Specific recommendation (e.g., XC7K160T)
+- Selection rationale and margin considerations
 
-## 项目案例
+## Project Case Studies
 
-本指南中的经验来自以下实际项目：
-- **RGB转YUV转换器** - 5级流水线设计，位宽管理
-- **VGA控制器** - 视频时序生成，帧缓冲管理
-- **FIR滤波器** - DSP优化，系数存储
-- **AXI接口** - 总线协议，握手处理
+Experience in this guide comes from these actual projects:
+- **RGB-to-YUV Converter** - 5-stage pipeline design, bit-width management
+- **VGA Controller** - Video timing generation, frame buffer management
+- **FIR Filter** - DSP optimization, coefficient storage
+- **AXI Interface** - Bus protocol, handshake handling
 
-## 与其他Skill的区别
+## Comparison with Other Skills
 
-| 特点 | 本Skill | 其他通用FPGA Skill |
-|------|---------|-------------------|
-| 内容来源 | 真实项目经验 | 官方文档整理 |
-| 代码示例 | 经过验证的实现 | 理论示例 |
-| 问题排查 | 实际踩过的坑 | 通用建议 |
-| 选型指南 | 具体案例分析 | 参数对比表 |
+| Feature | This Skill | Generic FPGA Skills |
+|---------|-----------|---------------------|
+| Content Source | Real project experience | Official documentation |
+| Code Examples | Verified implementations | Theoretical examples |
+| Problem Solving | Actual pitfalls encountered | Generic advice |
+| Selection Guide | Case-by-case analysis | Parameter comparison tables |
 
-## 贡献
+## Contributing
 
-欢迎提交Issue或Pull Request！
+Issues and Pull Requests are welcome!
 
-如果你有：
-- 实际项目中遇到的问题和解决方案
-- 独特的设计技巧
-- 器件选型的经验
+If you have:
+- Problems and solutions from real projects
+- Unique design techniques
+- Device selection experiences
 
-都可以贡献到本指南中。
+Please contribute to this guide.
 
-## 作者
+## Author
 
-**peng** - FPGA硬件设计工程师
+**peng** - FPGA Hardware Design Engineer
 
-专注于：
-- Xilinx 7系列FPGA
-- 视频/图像处理
-- 数字信号处理
-- 高速接口设计
+Specializing in:
+- Xilinx 7 Series FPGAs
+- Video/Image Processing
+- Digital Signal Processing
+- High-speed Interface Design
 
-## 许可证
+## License
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
+MIT License - See [LICENSE](LICENSE) file for details
 
-## 免责声明
+## Disclaimer
 
-本指南基于作者个人经验编写，仅供参考。实际项目中请以Xilinx官方文档为准。
+This guide is written based on personal experience for reference only. Please refer to official Xilinx documentation for actual projects.
 
 ---
 
-*持续更新中...*
+*Continuously updating...*
